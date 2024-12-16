@@ -28,7 +28,6 @@ jobs:
 
       # Step 4: Run Unit Tests
       - name: Run Unit Tests
-        working-directory: ./app
         run: pytest
 
       # Step 5: Setup Terraform
