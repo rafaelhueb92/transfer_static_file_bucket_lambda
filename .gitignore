@@ -164,3 +164,4 @@ cython_debug/
 .terraform.lock.hcl
 terraform.tfstate
 replicate_files.zip
+terraform/terraform.tfstate.backup

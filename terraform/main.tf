@@ -2,7 +2,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.0"
+      version = ">= 4.44.0"
     }
   }
 
@@ -20,12 +20,37 @@ resource "aws_s3_bucket" "source_bucket" {
 
 resource "aws_s3_bucket" "destination_bucket" {
   bucket = local.destination_bucket
-  acl    = "public-read"
 
   website {
     index_document = "index.html"
     error_document = "error.html"
   }
+
+}
+
+resource "aws_s3_bucket_public_access_block" "destination_bucket_block" {
+  bucket                  = aws_s3_bucket.destination_bucket.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "destination_bucket_policy" {
+  bucket = aws_s3_bucket.destination_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject",
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = "s3:GetObject",
+        Resource  = "${aws_s3_bucket.destination_bucket.arn}/*"
+      }
+    ]
+  })
 }
 
 data "archive_file" "lambda_zip" {
@@ -52,7 +77,7 @@ resource "aws_lambda_function" "replicate_files" {
 }
 
 resource "aws_iam_role" "lambda_role" {
-  name = "lambda_eventbridge_role"
+  name = "lambda_${var.lambda_name}_eventbridge_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -76,7 +101,8 @@ resource "aws_iam_role" "lambda_role" {
           Effect = "Allow"
           Action = [
             "s3:GetObject",
-            "s3:PutObject"
+            "s3:PutObject",
+            "s3:ListBucket"
           ]
           Resource = [
             "arn:aws:s3:::${local.source_bucket}/*",
@@ -120,6 +146,14 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
   source_arn    = aws_cloudwatch_event_rule.s3_eventbridge_rule.arn
 }
 
+resource "aws_lambda_permission" "s3_invoke_permission_destination" {
+  statement_id  = "AllowS3Invocation"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.replicate_files.function_name
+  principal     = "s3.amazonaws.com"
+  source_arn    = aws_s3_bucket.destination_bucket.arn
+}
+
 # S3 Event Notification for Object Deleted in Destination Bucket
 resource "aws_s3_bucket_notification" "destination_bucket_notification" {
   bucket = aws_s3_bucket.destination_bucket.id
@@ -130,13 +164,7 @@ resource "aws_s3_bucket_notification" "destination_bucket_notification" {
     filter_prefix       = "assets/"                 # Monitor files in the 'assets/' path
     filter_suffix       = ".json"                  # Focus only on JSON files
   }
-}
 
-# Update Lambda Permissions for S3 Bucket Invocation
-resource "aws_lambda_permission" "s3_invoke_permission" {
-  statement_id  = "AllowS3Invocation"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.replicate_files.arn
-  principal     = "s3.amazonaws.com"
-  source_arn    = "arn:aws:s3:::${aws_s3_bucket.destination_bucket.id}"
+  depends_on = [aws_lambda_permission.s3_invoke_permission_destination]
+
 }
