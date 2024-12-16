@@ -25,8 +25,8 @@ resource "aws_s3_bucket" "destination_bucket" {
 
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_dir  = "${path.module}../app"  # Path to your Lambda function directory
-  output_path = "${path.module}../app/replicate_files.zip"  # Output path for the zip file
+  source_dir  = "${path.module}/../app"  # Path to your Lambda function directory
+  output_path = "${path.module}/../app/replicate_files.zip"  # Output path for the zip file
 }
 
 resource "aws_lambda_function" "replicate_files" {
