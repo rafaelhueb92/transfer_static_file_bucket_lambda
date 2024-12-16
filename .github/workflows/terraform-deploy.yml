@@ -28,6 +28,7 @@ jobs:
 
       # Step 4: Run Unit Tests
       - name: Run Unit Tests
+        working-directory: ./app
         run: pytest
 
       # Step 5: Setup Terraform
@@ -46,13 +47,16 @@ jobs:
 
       # Step 7: Terraform Init
       - name: Terraform Init
+        working-directory: ./terraform
         run: terraform init
 
       # Step 8: Terraform Plan
       - name: Terraform Plan
+        working-directory: ./terraform
         run: terraform plan
 
       # Step 9: Terraform Apply (only if PR is merged)
       - name: Terraform Apply
+        working-directory: ./terraform
         if: github.event.pull_request.merged == true
         run: terraform apply -auto-approve
