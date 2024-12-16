@@ -14,12 +14,12 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "source_bucket" {
-  bucket = var.source_bucket
+  bucket = local.source_bucket
   acl    = "private"
 }
 
 resource "aws_s3_bucket" "destination_bucket" {
-  bucket = var.destination_bucket
+  bucket = local.destination_bucket
   acl    = "private"
 }
 
@@ -37,8 +37,8 @@ resource "aws_lambda_function" "replicate_files" {
 
   environment {
     variables = {
-      SOURCE_BUCKET      = var.source_bucket
-      DESTINATION_BUCKET = var.destination_bucket
+      SOURCE_BUCKET      = local.source_bucket
+      DESTINATION_BUCKET = local.destination_bucket
     }
   }
 
@@ -73,8 +73,8 @@ resource "aws_iam_role" "lambda_role" {
             "s3:PutObject"
           ]
           Resource = [
-            "arn:aws:s3:::${var.source_bucket}/*",
-            "arn:aws:s3:::${var.destination_bucket}/*"
+            "arn:aws:s3:::${local.source_bucket}/*",
+            "arn:aws:s3:::${local.destination_bucket}/*"
           ]
         }
       ]
@@ -91,7 +91,7 @@ resource "aws_cloudwatch_event_rule" "s3_eventbridge_rule" {
     "detail-type": ["Object Created", "Object Updated"],
     "detail": {
       "bucket": {
-        "name": [var.source_bucket]
+        "name": [local.source_bucket]
       },
       "object": {
         "key": ["users.json", "dashboards.json"]
