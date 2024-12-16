@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 .terraform
 .terraform.lock.hcl
+terraform.tfstate
+replicate_files.zip
