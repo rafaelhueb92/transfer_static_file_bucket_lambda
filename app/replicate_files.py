@@ -1,30 +1,44 @@
-import boto3
 import os
+import boto3
+from botocore.exceptions import ClientError
 
-s3_client = boto3.client('s3')
+s3_client = boto3.client("s3")
 
-# Buckets configurados via variáveis de ambiente
-SOURCE_BUCKET = os.environ['SOURCE_BUCKET']
-DESTINATION_BUCKET = os.environ['DESTINATION_BUCKET']
-FILES_TO_REPLICATE = ["users.json", "dashboards.json"]
+def replicate_file(source_bucket, destination_bucket, key):
+    try:
+        destination_prefix = os.environ.get("DESTINATION_PREFIX", "")
+        destination_key = f"{destination_prefix}{key}"
+
+        s3_client.copy_object(
+            CopySource={"Bucket": source_bucket, "Key": key},
+            Bucket=destination_bucket,
+            Key=destination_key
+        )
+        print(f"Arquivo {key} replicado de {source_bucket} para {destination_bucket}/{destination_key}")
+    except ClientError as e:
+        print(f"Erro ao copiar arquivo {key}: {e}")
+        raise
 
 def handler(event, context):
-    try:
-        # Itera sobre os objetos do evento recebido
-        for record in event['detail']['object']:
-            file_name = record['key']
+    source_bucket = os.environ["SOURCE_BUCKET"]
+    destination_bucket = os.environ["DESTINATION_BUCKET"]
 
-            if file_name in FILES_TO_REPLICATE:
-                print(f"Replicating {file_name} to {DESTINATION_BUCKET}")
-                copy_source = {'Bucket': SOURCE_BUCKET, 'Key': file_name}
-                s3_client.copy_object(
-                    Bucket=DESTINATION_BUCKET,
-                    CopySource=copy_source,
-                    Key=file_name
-                )
-                print(f"Successfully replicated {file_name}")
-            else:
-                print(f"File {file_name} is not in the replication list. Skipping...")
-    except Exception as e:
-        print(f"Error processing event: {e}")
-        raise e
+    for record in event["Records"]:
+        event_name = record["eventName"]
+        bucket_name = record["s3"]["bucket"]["name"]
+        key = record["s3"]["object"]["key"]
+
+        if bucket_name == source_bucket and event_name.startswith("ObjectCreated"):
+            print(f"Arquivo {key} foi criado ou atualizado no bucket {bucket_name}")
+            try:
+                replicate_file(source_bucket, destination_bucket, key)
+            except ClientError as e:
+                print(f"Erro ao replicar arquivo {key}: {e}")
+        elif bucket_name == destination_bucket and event_name.startswith("ObjectRemoved"):
+            print(f"Arquivo {key} foi removido do bucket {bucket_name}")
+            try:
+                replicate_file(source_bucket, destination_bucket, key)
+            except ClientError as e:
+                print(f"Erro ao restaurar o arquivo {key}: {e}")
+        else:
+            print(f"Evento ignorado: {event_name}")

@@ -1,42 +1,88 @@
-import os
+import unittest
 from unittest.mock import patch, MagicMock
+import os
+from replicate_files import handler, replicate_file
 
-# Mock environment variables
-os.environ["SOURCE_BUCKET"] = "source-bucket"
-os.environ["DESTINATION_BUCKET"] = "destination-bucket"
+@patch.dict(os.environ, {
+    "SOURCE_BUCKET": "test-source-bucket",
+    "DESTINATION_BUCKET": "test-destination-bucket",
+    "DESTINATION_PREFIX": "assets/"
+})
+class TestLambdaHandler(unittest.TestCase):
 
-# Import the Lambda function
-from app.replicate_files import handler
+    @patch("replicate_files.s3_client")
+    def test_replicate_file_success(self, mock_s3_client):
+        replicate_file("test-source-bucket", "test-destination-bucket", "test-key.json")
+        mock_s3_client.copy_object.assert_called_once_with(
+            CopySource={"Bucket": "test-source-bucket", "Key": "test-key.json"},
+            Bucket="test-destination-bucket",
+            Key="assets/test-key.json"
+        )
 
-# Mock event for testing
-mock_event = {
-    "detail": {
-        "object": [{"key": "users.json"}, {"key": "irrelevant-file.json"}]
-    }
-}
+    @patch("replicate_files.s3_client")
+    def test_handler_replicates_on_update(self, mock_s3_client):
+        mock_s3_client.copy_object.return_value = None
 
-@patch("app.replicate_files.s3_client")
-def test_handler_success(mock_s3_client):
-    # Mock S3 copy_object method
-    mock_s3_client.copy_object = MagicMock()
+        event = {
+            "Records": [
+                {
+                    "eventName": "ObjectCreated:Put",
+                    "s3": {
+                        "bucket": {"name": "test-source-bucket"},
+                        "object": {"key": "test-key.json"}
+                    }
+                }
+            ]
+        }
 
-    # Call the handler
-    handler(mock_event, None)
+        handler(event, None)
 
-    # Assert copy_object was called for users.json
-    mock_s3_client.copy_object.assert_called_once_with(
-        Bucket="destination-bucket",
-        CopySource={"Bucket": "source-bucket", "Key": "users.json"},
-        Key="users.json"
-    )
+        mock_s3_client.copy_object.assert_called_once_with(
+            CopySource={"Bucket": "test-source-bucket", "Key": "test-key.json"},
+            Bucket="test-destination-bucket",
+            Key="assets/test-key.json"
+        )
 
-def test_handler_skips_irrelevant_files():
-    # Mock S3 client to avoid real AWS interaction
-    with patch("app.replicate_files.s3_client") as mock_s3_client:
-        mock_s3_client.copy_object = MagicMock()
+    @patch("replicate_files.s3_client")
+    def test_handler_restores_deleted_file(self, mock_s3_client):
+        mock_s3_client.copy_object.return_value = None
 
-        # Call the handler
-        handler(mock_event, None)
+        event = {
+            "Records": [
+                {
+                    "eventName": "ObjectRemoved:Delete",
+                    "s3": {
+                        "bucket": {"name": "test-destination-bucket"},
+                        "object": {"key": "test-key.json"}
+                    }
+                }
+            ]
+        }
 
-        # Assert copy_object was called only once for users.json
-        assert mock_s3_client.copy_object.call_count == 1
+        handler(event, None)
+
+        mock_s3_client.copy_object.assert_called_once_with(
+            CopySource={"Bucket": "test-source-bucket", "Key": "test-key.json"},
+            Bucket="test-destination-bucket",
+            Key="assets/test-key.json"
+        )
+
+    @patch("replicate_files.s3_client")
+    def test_handler_ignores_non_related_events(self, mock_s3_client):
+        event = {
+            "Records": [
+                {
+                    "eventName": "ObjectCreated:Put",
+                    "s3": {
+                        "bucket": {"name": "unrelated-bucket"},
+                        "object": {"key": "test-key.json"}
+                    }
+                }
+            ]
+        }
+
+        handler(event, None)
+        mock_s3_client.copy_object.assert_not_called()
+
+if __name__ == "__main__":
+    unittest.main()

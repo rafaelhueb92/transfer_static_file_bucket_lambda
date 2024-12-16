@@ -20,13 +20,18 @@ resource "aws_s3_bucket" "source_bucket" {
 
 resource "aws_s3_bucket" "destination_bucket" {
   bucket = local.destination_bucket
-  acl    = "private"
+  acl    = "public-read"
+
+  website {
+    index_document = "index.html"
+    error_document = "error.html"
+  }
 }
 
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_dir  = "${path.module}/../app"  # Path to your Lambda function directory
-  output_path = "${path.module}/../app/replicate_files.zip"  # Output path for the zip file
+  source_dir  = "${path.module}/../app"  
+  output_path = "${path.module}/../app/replicate_files.zip"  
 }
 
 resource "aws_lambda_function" "replicate_files" {
@@ -39,6 +44,7 @@ resource "aws_lambda_function" "replicate_files" {
     variables = {
       SOURCE_BUCKET      = local.source_bucket
       DESTINATION_BUCKET = local.destination_bucket
+      DESTINATION_PREFIX = "assets/" 
     }
   }
 
@@ -74,7 +80,7 @@ resource "aws_iam_role" "lambda_role" {
           ]
           Resource = [
             "arn:aws:s3:::${local.source_bucket}/*",
-            "arn:aws:s3:::${local.destination_bucket}/*"
+            "arn:aws:s3:::${local.destination_bucket}/assets/*"
           ]
         }
       ]
@@ -112,4 +118,25 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
   function_name = aws_lambda_function.replicate_files.arn
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.s3_eventbridge_rule.arn
+}
+
+# S3 Event Notification for Object Deleted in Destination Bucket
+resource "aws_s3_bucket_notification" "destination_bucket_notification" {
+  bucket = aws_s3_bucket.destination_bucket.id
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.replicate_files.arn
+    events              = ["s3:ObjectRemoved:Delete"]
+    filter_prefix       = "assets/"                 # Monitor files in the 'assets/' path
+    filter_suffix       = ".json"                  # Focus only on JSON files
+  }
+}
+
+# Update Lambda Permissions for S3 Bucket Invocation
+resource "aws_lambda_permission" "s3_invoke_permission" {
+  statement_id  = "AllowS3Invocation"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.replicate_files.arn
+  principal     = "s3.amazonaws.com"
+  source_arn    = "arn:aws:s3:::${aws_s3_bucket.destination_bucket.id}"
 }
