@@ -1,13 +1,12 @@
 import os
-import pytest
 from unittest.mock import patch, MagicMock
-
-# Import the Lambda function
-from app.replicate_files import handler
 
 # Mock environment variables
 os.environ["SOURCE_BUCKET"] = "source-bucket"
 os.environ["DESTINATION_BUCKET"] = "destination-bucket"
+
+# Import the Lambda function
+from app.replicate_files import handler
 
 # Mock event for testing
 mock_event = {
