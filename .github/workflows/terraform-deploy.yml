@@ -64,4 +64,5 @@ jobs:
 
       - name: Terraform Destroy on Apply Failure
         if: failure() # directive ensures that this step runs only if the previous steps (like terraform apply) fail.
+        working-directory: ./terraform
         run: terraform destroy -auto-approve
