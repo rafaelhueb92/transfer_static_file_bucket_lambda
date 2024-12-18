@@ -50,6 +50,33 @@ jobs:
       - name: Terraform Init
         working-directory: ./terraform
         run: terraform init
+      
+      - name: Check for destroy key
+        working-directory: ./terraform
+        id: check_destroy
+        run: |
+          DESTROY=$(jq -r '.destroy' config.json || echo "false")
+          if [ "$DESTROY" == "true" ]; then
+            echo "Destroy key is true. Proceeding to destroy infrastructure."
+            echo "action=destroy" >> $GITHUB_ENV
+          else
+            echo "Destroy key is false. Proceeding with other actions."
+            echo "action=apply" >> $GITHUB_ENV
+
+      - name: Terraform Destroy
+        working-directory: ./terraform
+        if: env.action == 'destroy'
+        run: |
+          terraform init
+          terraform destroy -auto-approve
+
+      # Step 5: Stop the workflow after destroy
+      - name: Stop Workflow After Destroy
+        working-directory: ./terraform
+        if: env.action == 'destroy'
+        run: |
+          echo "Destroy completed. Stopping the workflow."
+          exit 0
 
       # Step 8: Terraform Plan
       - name: Terraform Plan
